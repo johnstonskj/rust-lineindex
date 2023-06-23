@@ -51,7 +51,7 @@ YYYYY
     dyn_drop,
 )]
 
-use std::{ops::{RangeInclusive}, borrow::Cow};
+use std::{borrow::Cow, ops::RangeInclusive};
 
 // ------------------------------------------------------------------------------------------------
 // Public Types
@@ -75,7 +75,6 @@ pub struct Index {
     character: usize,
 }
 
-
 // ------------------------------------------------------------------------------------------------
 // Public Functions
 // ------------------------------------------------------------------------------------------------
@@ -84,8 +83,8 @@ pub struct Index {
 // Implementations
 // ------------------------------------------------------------------------------------------------
 
-impl From<&str> for IndexedString<'_> {
-    fn from(s: &str) -> Self {
+impl<'a> From<&'a str> for IndexedString<'a> {
+    fn from(s: &'a str) -> Self {
         let lines = Self::make_lines(s);
         Self {
             source: Cow::Borrowed(s),
@@ -107,16 +106,37 @@ impl From<String> for IndexedString<'_> {
 impl IndexedString<'_> {
     fn make_lines(s: &str) -> Vec<Range> {
         let mut lines: Vec<Range> = Default::default();
-        let mut start = Index { byte: 0, character: 0 };
-        let end = s.len();
-        for (c_i, (b_i, c)) in s.char_indices().enumerate() {
-            if c == '\n' || c_i == end {
-                let here = Index { byte: b_i, character: c_i };
-                lines.push(Range {start, end: here });
-                start = here;
+        if !s.is_empty() {
+            let mut start = Index {
+                byte: 0,
+                character: 0,
+            };
+            let mut next = false;
+            let end = s.len() - 1;
+            for (c_i, (b_i, c)) in s.char_indices().enumerate() {
+                if next {
+                    let here = Index {
+                        byte: b_i,
+                        character: c_i,
+                    };
+                    start = here;
+                    next = false;
+                }
+                if c == '\n' || c_i == end {
+                    let here = Index {
+                        byte: b_i,
+                        character: c_i,
+                    };
+                    lines.push(Range { start, end: here });
+                    next = true;
+                }
             }
         }
         lines
+    }
+
+    pub fn lines(&self) -> usize {
+        self.lines.len()
     }
 
     pub fn line_for_byte(&self, byte: usize) -> Option<usize> {
@@ -136,7 +156,11 @@ impl IndexedString<'_> {
     fn inner_line_for(&self, byte: bool, index: usize, start: usize, end: usize) -> Option<usize> {
         let mid_index = start + ((end - start) / 2);
         let mid_range = self.lines.get(mid_index).unwrap();
-        let mid_range = if byte { mid_range.bytes() } else { mid_range.characters() };
+        let mid_range = if byte {
+            mid_range.bytes()
+        } else {
+            mid_range.characters()
+        };
         if mid_range.contains(&index) {
             Some(mid_index)
         } else if mid_index > start && index < *mid_range.start() {
@@ -166,7 +190,7 @@ impl IndexedString<'_> {
 
     pub fn line_str(&self, line: usize) -> Option<&str> {
         if let Some(range) = self.byte_range_for_line(line) {
-           Some(&self.source[range])
+            Some(&self.source[range])
         } else {
             None
         }
@@ -177,10 +201,7 @@ impl IndexedString<'_> {
 
 impl Range {
     pub fn new(start: Index, end: Index) -> Self {
-        Self {
-            start,
-            end,
-        }
+        Self { start, end }
     }
 
     pub fn start(&self) -> Index {
@@ -204,17 +225,64 @@ impl Range {
 
 impl Index {
     pub fn new(byte: usize, character: usize) -> Self {
-        Self {
-            byte,
-            character,
-        }
+        Self { byte, character }
     }
 
-    pub fn byte(&self) -> usize { self.byte }
+    pub fn byte(&self) -> usize {
+        self.byte
+    }
 
-    pub fn character(&self) -> usize { self.character }
+    pub fn character(&self) -> usize {
+        self.character
+    }
 }
 
 // ------------------------------------------------------------------------------------------------
 // Modules
 // ------------------------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------------------------
+// Unit Tests
+// ------------------------------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+
+    #[test]
+    fn test_empty_string() {
+        let indexed = IndexedString::from("");
+
+        println!("{:#?}", indexed);
+        assert_eq!(indexed.lines(), 0);
+    }
+
+    #[test]
+    fn test_simple_lines() {
+        let lines = "aa\nbbb\ncccc\ndd";
+        let indexed = IndexedString::from(lines);
+
+        println!("{:#?}", indexed);
+        assert_eq!(indexed.lines(), 4);
+
+        [
+            (0, 0), (1, 0), (2, 0),
+            (3, 1), (4, 1), (5, 1), (6, 1),
+            (7, 2), (8, 2), (9, 2), (10, 2), (11, 2),
+            (12, 3), (13, 3),
+        ]
+            .into_iter()
+            .for_each(|(byte, line)| assert_eq!(indexed.line_for_byte(byte).unwrap(), line));
+
+        [
+            (0, "aa\n"),
+            (1, "bbb\n"),
+            (2, "cccc\n"),
+            (3, "dd"),
+        ]
+            .into_iter()
+            .for_each(|(line, string)| assert_eq!(indexed.line_str(line), Some(string)));
+    }
+}
