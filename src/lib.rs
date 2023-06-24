@@ -1,13 +1,48 @@
 /*!
-One-line description.
+A simple line-indexed string.
 
-More detailed description, with
+Rather than destructively breaking a string into lines, this structure will allow
+create a vector of byte/character ranges each of which describes a line in the string
+original string.
 
 # Example
 
-YYYYY
+Given the following simple string,
 
-# Features
+```text
+                    1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9
+-----------------------------------------------------------
+a a ␤ b b b ␤ c c c c ␤ d d
+```
+
+We get the following set of line index ranges.
+
+| Row  | < Byte | < Char | > Byte | > Char | String  |
+|======|========|========|========|========|=========|
+| 0    | 0      | 0      | 2      | 2      | "aa␤"   |
+| 1    | 3      | 3      | 6      | 6      | "bbb␤"  |
+| 2    | 7      | 7      | 11     | 11     | "cccc␤" |
+| 3    | 12     | 12     | 13     | 13     | "dd"    |
+
+This set of ranges can be used to determine which line a character is on as well as
+returning the indices for a line or even the text of a line.
+
+```rust
+use lineindex::IndexedString;
+
+let indexed = IndexedString::from("aa\nbbb\ncccc\ndd");
+
+assert_eq!(indexed.lines(), 4);
+
+assert_eq!(indexed.line_for_byte(4), Some(1));
+assert_eq!(indexed.line_for_character(5), Some(1));
+
+assert_eq!(indexed.byte_range_for_line(1), Some(3..=6));
+assert_eq!(indexed.character_range_for_line(2), Some(7..=11));
+
+assert_eq!(indexed.line_str(0), Some("aa\n"));
+```
 
 */
 
@@ -57,18 +92,35 @@ use std::{borrow::Cow, ops::RangeInclusive};
 // Public Types
 // ------------------------------------------------------------------------------------------------
 
+///
+/// This type holds a reference to an string and an index of both the byte and character ranges for
+/// lines within the string. Both of these values are immutable, a change to the original string
+/// will require construction of a new indexed string.
+///
+/// The index itself is a vector of start/end indices; `start` is the 0-based index of the first
+/// character in the line and `end` is the index of the last character in the line.
+///
+/// Note that an empty string will result in a zero-length vector of
+///
 #[derive(Clone, Debug)]
 pub struct IndexedString<'a> {
     source: Cow<'a, str>,
     lines: Vec<Range>,
 }
 
+///
+/// This is a simplified version of [`std::ops::RangeInclusive`] where each end of the range is an
+/// [`Index`] structure.
+///
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Range {
     start: Index,
     end: Index,
 }
 
+///
+/// An index value is a tuple of the byte index and character index for a character in the string.
+///
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Index {
     byte: usize,
@@ -135,15 +187,26 @@ impl IndexedString<'_> {
         lines
     }
 
+    ///
+    /// Returns the number of rows calculated within the source string.
+    ///
     pub fn lines(&self) -> usize {
         self.lines.len()
     }
 
+    ///
+    /// Return the line containing the provided byte index. If the index is
+    /// outside the range of the string return `None`.
+    ///
     pub fn line_for_byte(&self, byte: usize) -> Option<usize> {
         self.line_for(true, byte)
     }
 
-    pub fn line_for_char(&self, character: usize) -> Option<usize> {
+    ///
+    /// Return the line containing the provided character index. If the index is
+    /// outside the range of the string return `None`.
+    ///
+    pub fn line_for_character(&self, character: usize) -> Option<usize> {
         self.line_for(false, character)
     }
 
@@ -172,22 +235,26 @@ impl IndexedString<'_> {
         }
     }
 
+    ///
+    /// Return the byte range (including any terminating newline) for the provided
+    /// line number. If the line number is outside the range of the string return `None`.
+    ///
     pub fn byte_range_for_line(&self, line: usize) -> Option<RangeInclusive<usize>> {
-        if let Some(range) = self.lines.get(line) {
-            Some(range.bytes())
-        } else {
-            None
-        }
+        self.lines.get(line).map(|range|range.bytes())
     }
 
-    pub fn char_range_for_line(&self, line: usize) -> Option<RangeInclusive<usize>> {
-        if let Some(range) = self.lines.get(line) {
-            Some(range.characters())
-        } else {
-            None
-        }
+    ///
+    /// Return the character range (including any terminating newline) for the provided
+    /// line number. If the line number is outside the range of the string return `None`.
+    ///
+    pub fn character_range_for_line(&self, line: usize) -> Option<RangeInclusive<usize>> {
+        self.lines.get(line).map(|range|range.characters())
     }
 
+    ///
+    /// Return the line, as a string, (including any terminating newline) for the provided
+    /// line number. If the line number is outside the range of the string return `None`.
+    ///
     pub fn line_str(&self, line: usize) -> Option<&str> {
         if let Some(range) = self.byte_range_for_line(line) {
             Some(&self.source[range])
@@ -200,22 +267,37 @@ impl IndexedString<'_> {
 // ------------------------------------------------------------------------------------------------
 
 impl Range {
+    ///
+    /// Construct a new range from the start and end indices.
+    ///
     pub fn new(start: Index, end: Index) -> Self {
         Self { start, end }
     }
 
+    ///
+    /// Return the start index of this range.
+    ///
     pub fn start(&self) -> Index {
         self.start
     }
 
+    ///
+    /// Return the end index of this range.
+    ///
     pub fn end(&self) -> Index {
         self.end
     }
 
+    ///
+    /// Return a standard library range for just the byte indices.
+    ///
     pub fn bytes(&self) -> RangeInclusive<usize> {
         self.start.byte..=self.end.byte
     }
 
+    ///
+    /// Return a standard library range for just the character indices.
+    ///
     pub fn characters(&self) -> RangeInclusive<usize> {
         self.start.character..=self.end.character
     }
@@ -224,14 +306,23 @@ impl Range {
 // ------------------------------------------------------------------------------------------------
 
 impl Index {
+    ///
+    /// Construct a new index with byte and character indices.
+    ///
     pub fn new(byte: usize, character: usize) -> Self {
         Self { byte, character }
     }
 
+    ///
+    /// Return the byte part of this index.
+    ///
     pub fn byte(&self) -> usize {
         self.byte
     }
 
+    ///
+    /// Return the character part of this index.
+    ///
     pub fn character(&self) -> usize {
         self.character
     }
@@ -250,7 +341,6 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-
     #[test]
     fn test_empty_string() {
         let indexed = IndexedString::from("");
@@ -268,20 +358,25 @@ mod tests {
         assert_eq!(indexed.lines(), 4);
 
         [
-            (0, 0), (1, 0), (2, 0),
-            (3, 1), (4, 1), (5, 1), (6, 1),
-            (7, 2), (8, 2), (9, 2), (10, 2), (11, 2),
-            (12, 3), (13, 3),
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (3, 1),
+            (4, 1),
+            (5, 1),
+            (6, 1),
+            (7, 2),
+            (8, 2),
+            (9, 2),
+            (10, 2),
+            (11, 2),
+            (12, 3),
+            (13, 3),
         ]
-            .into_iter()
-            .for_each(|(byte, line)| assert_eq!(indexed.line_for_byte(byte).unwrap(), line));
+        .into_iter()
+        .for_each(|(byte, line)| assert_eq!(indexed.line_for_byte(byte).unwrap(), line));
 
-        [
-            (0, "aa\n"),
-            (1, "bbb\n"),
-            (2, "cccc\n"),
-            (3, "dd"),
-        ]
+        [(0, "aa\n"), (1, "bbb\n"), (2, "cccc\n"), (3, "dd")]
             .into_iter()
             .for_each(|(line, string)| assert_eq!(indexed.line_str(line), Some(string)));
     }
