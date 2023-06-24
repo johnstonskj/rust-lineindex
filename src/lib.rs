@@ -240,7 +240,7 @@ impl IndexedString<'_> {
     /// line number. If the line number is outside the range of the string return `None`.
     ///
     pub fn byte_range_for_line(&self, line: usize) -> Option<RangeInclusive<usize>> {
-        self.lines.get(line).map(|range|range.bytes())
+        self.lines.get(line).map(|range| range.bytes())
     }
 
     ///
@@ -248,7 +248,7 @@ impl IndexedString<'_> {
     /// line number. If the line number is outside the range of the string return `None`.
     ///
     pub fn character_range_for_line(&self, line: usize) -> Option<RangeInclusive<usize>> {
-        self.lines.get(line).map(|range|range.characters())
+        self.lines.get(line).map(|range| range.characters())
     }
 
     ///
