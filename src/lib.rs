@@ -155,6 +155,12 @@ impl From<String> for IndexedString<'_> {
     }
 }
 
+impl AsRef<str> for IndexedString<'_> {
+    fn as_ref(&self) -> &str {
+        &self.source
+    }
+}
+
 impl IndexedString<'_> {
     fn make_lines(s: &str) -> Vec<Range> {
         let mut lines: Vec<Range> = Default::default();
@@ -192,6 +198,20 @@ impl IndexedString<'_> {
     ///
     pub fn lines(&self) -> usize {
         self.lines.len()
+    }
+
+    ///
+    /// Return a reference to the source, as a string.
+    ///
+    pub fn as_str(&self) -> &str {
+        &self.source
+    }
+
+    ///
+    /// Return a reference to the source, as a byte array.
+    ///
+    pub fn as_bytes(&self) -> &[u8] {
+        self.source.as_bytes()
     }
 
     ///
